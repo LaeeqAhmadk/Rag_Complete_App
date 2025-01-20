@@ -1,5 +1,6 @@
 import os
 import sys
+import requests
 from dotenv import load_dotenv
 from langchain.prompts import PromptTemplate
 from langchain_community.vectorstores import Qdrant
@@ -15,52 +16,6 @@ from src.preprocessing import load_documents, split_documents  # Assuming this i
 
 load_dotenv()
 
-def delete_previous_vectors(qdrant_client, collection_name="rag"):
-    """
-    Delete previous vectors from the Qdrant vector store.
-    
-    Args:
-        qdrant_client (QdrantClient): The Qdrant client.
-        collection_name (str): The collection name in Qdrant.
-    """
-    try:
-        qdrant_client.delete_collection(collection_name=collection_name)
-        logger.info("Previous vectors deleted successfully from Qdrant.")
-    except Exception as e:
-        logger.error(f"Error deleting previous vectors from Qdrant: {str(e)}")
-        raise CustomException(e, sys)
-
-def upload_new_document(file_path: str, qdrant_client, collection_name="rag"):
-    """
-    Upload a new document, split it, generate embeddings, and store in Qdrant.
-    
-    Args:
-        file_path (str): The file path of the PDF document to upload.
-        qdrant_client (QdrantClient): The Qdrant client.
-        collection_name (str): The collection name in Qdrant.
-    """
-    try:
-        # Load and process the document
-        documents = load_documents(file_path)
-        chunks = split_documents(documents)
-
-        # Generate embeddings for the chunks
-        embeddings = generate_embeddings(chunks)
-
-        # Initialize embeddings model
-        model_name = "sentence-transformers/all-mpnet-base-v2"
-        embeddings_model = HuggingFaceEmbeddings(model_name=model_name)
-
-        # Create or overwrite the collection in Qdrant with the new document's embeddings
-        qdrant = Qdrant(client=qdrant_client, collection_name=collection_name, embeddings=embeddings_model)
-
-        # Upload the embeddings to Qdrant
-        qdrant.add_documents(documents=chunks, embeddings=embeddings)
-
-        logger.info("New document uploaded successfully to Qdrant.")
-    except Exception as e:
-        logger.error(f"Error uploading new document to Qdrant: {str(e)}")
-        raise CustomException(e, sys)
 
 def format_docs(docs):
     """
@@ -77,10 +32,10 @@ def format_docs(docs):
 def retrieve_answer_from_docs(question: str):
     """
     Retrieve the answer to a question from the documents.
-
+    
     Args:
         question (str): The question to answer.
-
+    
     Returns:
         str: The generated answer.
     """
@@ -92,20 +47,29 @@ def retrieve_answer_from_docs(question: str):
 
         if not all([qdrant_url, qdrant_api_key, groq_api_key]):
             raise ValueError("One or more environment variables are missing.")
+        
+        # Check if the collection exists
+        headers = {"Authorization": f"Bearer {qdrant_api_key}"}
+        collection_info_url = f"{qdrant_url}/collections/rag"
+        response = requests.get(collection_info_url, headers=headers)
+        
+        if response.status_code == 404:
+            raise CustomException("Sorry, you don't have any documents. First, upload a PDF.", sys)
+        response.raise_for_status()
 
         # Define the prompt template for LLM interaction
         prompt = PromptTemplate(
             template="""# Your role
                         You are an expert at understanding the intent of the questioner and providing optimal answers from the documents.
-
+    
                         # Instruction
                         Your task is to answer the question using the following retrieved context delimited by XML tags.
-
+    
                         <retrieved context>
                         Retrieved Context:
                         {context}
                         </retrieved context>
-
+    
                         # Question:
                         {question}""",
             input_variables=["context", "question"]
@@ -135,10 +99,51 @@ def retrieve_answer_from_docs(question: str):
         answer = rag_chain.invoke(question)
         logger.info("Answer retrieved successfully")
         return answer
-
-    except ValueError as ve:
-        logger.error("Environment variable error: %s", ve)
-        raise CustomException(ve, sys)
+    except CustomException as ce:
+        logger.warning("Custom exception occurred: %s", str(ce))
+        raise ce  # Reraise to be handled by the app
     except Exception as e:
-        logger.error("Error retrieving answer: %s", str(e))
-        raise CustomException(e, sys)
+        # Log the exception and ensure the error message is propagated properly to the app
+        error_message = f"Error retrieving answer: {str(e)}"
+        logger.error(error_message)
+        raise CustomException(error_message, sys)
+
+
+
+
+def clear_qdrant_data(qdrant_url, qdrant_api_key, collection_name="rag"):
+    """
+    Deletes all vectors in the specified Qdrant collection.
+
+    Args:
+        qdrant_url (str): The URL of the Qdrant instance.
+        qdrant_api_key (str): The API key for authentication.
+        collection_name (str): The name of the collection to clear.
+
+    Returns:
+        bool: True if deletion was successful, False if the collection didn't exist.
+    """
+    headers = {"Authorization": f"Bearer {qdrant_api_key}"}
+    
+    # Check if the collection exists
+    collection_info_url = f"{qdrant_url}/collections/{collection_name}"
+    response = requests.get(collection_info_url, headers=headers)
+
+    if response.status_code == 200:
+        # Delete the collection
+        delete_url = f"{qdrant_url}/collections/{collection_name}"
+        delete_response = requests.delete(delete_url, headers=headers)
+        
+        if delete_response.status_code == 200:
+            logger.info("Collection successfully deleted.")
+            return True
+        else:
+            logger.error(f"Failed to delete collection: {delete_response.text}")
+            raise CustomException(f"Failed to delete collection: {delete_response.text}", sys)
+    elif response.status_code == 404:
+        # Collection doesn't exist
+        logger.info("Collection does not exist.")
+        return False
+    else:
+        logger.error(f"Error checking collection: {response.text}")
+        raise CustomException(f"Error checking collection: {response.text}", sys)
