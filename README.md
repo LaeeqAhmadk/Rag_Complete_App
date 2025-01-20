@@ -4,29 +4,29 @@ Rag_Complete_App is a streamlined and user-friendly application designed to impl
 
 ## Features
 
-1. Document Uploading and Preprocessing
+1. **Document Uploading and Preprocessing**
 
-- Easily upload and preprocess documents.
+  - Easily upload and preprocess documents.
 
-- Supports splitting documents into manageable chunks for effective retrieval.
+  - Supports splitting documents into manageable chunks for effective retrieval.
 
-2. Integration with Qdrant
+2. **Integration with Qdrant**
 
-- Indexes and retrieves documents using Qdrant, a powerful vector database.
+  - Indexes and retrieves documents using Qdrant, a powerful vector database.
 
-- Efficient storage and retrieval of vectorized document embeddings.
+  - Efficient storage and retrieval of vectorized document embeddings.
 
-3. Streamlit Interface
+3. **Streamlit Interface**
 
-- Intuitive interface built with Streamlit.
+  - Intuitive interface built with Streamlit.
 
-- Seamlessly upload, query, and retrieve relevant information.
+  - Seamlessly upload, query, and retrieve relevant information.
 
-4. Extensibility
+4. **Extensibility**
 
-- Modular design for easy integration and customization.
+  - Modular design for easy integration and customization.
 
-- Supports enhancements to improve retrieval and generation workflows.
+  - Supports enhancements to improve retrieval and generation workflows.
 
 ## Project Structure
 
